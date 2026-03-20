@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Enterprise Security & Compliance Policies
+# AI Developer Assistant — Policy Knowledge Base
+#
+# Format: One policy per line. Blank lines and lines starting with # are
+# treated as comments and ignored by the ingestion script.
+#
+# Each policy is embedded as a distinct vector in the FAISS index.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Authentication & Access Control ──────────────────────────────────────────
+
+All APIs and services must require authentication. Unauthenticated endpoints are prohibited unless explicitly approved by the security team.
+
+Multi-factor authentication (MFA) is mandatory for all human user access to production systems, AWS Console, and administrative interfaces.
+
+Service-to-service authentication must use short-lived credentials (e.g., IAM roles, OIDC tokens). Long-lived static credentials for service accounts are prohibited.
+
+OAuth 2.0 with PKCE must be used for user-facing applications. Implicit flow is deprecated and must not be used.
+
+Session tokens must expire after a maximum of 8 hours of inactivity for user sessions and 1 hour for API tokens.
+
+# ── Secret Management ─────────────────────────────────────────────────────────
+
+Secrets, passwords, API keys, and credentials must never be hardcoded in source code, configuration files, or Dockerfiles. Use a secrets manager (AWS Secrets Manager, HashiCorp Vault) or environment variables injected at runtime.
+
+Database passwords, private keys, and API tokens must be stored in AWS Secrets Manager or HashiCorp Vault. They must not be stored in plain text in any repository, even private ones.
+
+Environment variable names that suggest sensitive data (e.g., PASSWORD, SECRET, API_KEY, TOKEN) must not be committed to version control with actual values.
+
+Secrets must be rotated at least every 90 days. Rotation must be automated where possible.
+
+# ── Network & Transport Security ──────────────────────────────────────────────
+
+All external API communication must use HTTPS (TLS 1.2 or higher). Plain HTTP endpoints are prohibited for production traffic.
+
+TLS certificates must be issued by a trusted CA and must not be self-signed in production. Certificate expiry must be monitored with automated alerting at 30 days before expiry.
+
+Internal service-to-service communication within a VPC must use TLS where the service handles sensitive or PII data.
+
+Network Security Groups (NSGs) and Security Groups must follow the principle of least privilege: only the minimum required ports and protocols must be open. SSH (port 22) and RDP (port 3389) must never be open to 0.0.0.0/0.
+
+VPCs must use private subnets for application and database tiers. Public subnets are reserved for load balancers and NAT gateways only.
+
+# ── AWS S3 & Object Storage ───────────────────────────────────────────────────
+
+S3 buckets must never be configured with public ACLs (public-read, public-read-write) unless the bucket serves a public static website, and this must be approved by the security team.
+
+S3 Block Public Access settings must be enabled at the account level and on every bucket. S3 Object ownership must be set to "Bucket owner enforced."
+
+S3 buckets containing sensitive or PII data must have server-side encryption enabled. Use AWS KMS customer-managed keys (CMK) for regulated data.
+
+S3 bucket versioning must be enabled on all buckets storing critical data assets. Enable MFA Delete on buckets containing audit logs.
+
+S3 access logs must be enabled for all buckets containing application data or user uploads, and log data must be retained for a minimum of 1 year.
+
+# ── IAM & Least Privilege ─────────────────────────────────────────────────────
+
+IAM roles must follow the principle of least privilege. Wildcard (*) actions or resources in IAM policies require security team review and approval.
+
+IAM users must not be used for application workloads. Applications must use IAM roles attached to EC2 instances, Lambda functions, or ECS tasks.
+
+AdministratorAccess and PowerUserAccess managed policies must not be attached to any role used by automated systems or CI/CD pipelines.
+
+IAM policies must be attached to roles or groups, not directly to IAM users. Inline policies must be avoided in favour of managed policies.
+
+IAM role trust policies must specify the minimum required principals. Wildcards in trust policy Principal elements are prohibited.
+
+# ── Encryption at Rest ────────────────────────────────────────────────────────
+
+All databases, file systems, and object stores must have encryption at rest enabled. Unencrypted RDS instances, EBS volumes, and S3 buckets are prohibited.
+
+AWS KMS Customer Managed Keys (CMK) must be used for encryption of regulated and sensitive data. AWS-managed keys are acceptable only for non-sensitive workloads.
+
+Encryption keys must have key rotation enabled. KMS key rotation must be set to automatic annual rotation at minimum.
+
+# ── Container & Kubernetes Security ──────────────────────────────────────────
+
+Docker images must not run as the root user. Use USER directives in Dockerfiles to switch to a non-root user before the application starts.
+
+Container images must be scanned for known vulnerabilities (CVEs) as part of the CI/CD pipeline before deployment to production. Images with critical CVEs must not be deployed.
+
+Kubernetes Pods must define resource requests and limits (CPU and memory). Pods without resource limits are prohibited in production namespaces.
+
+Kubernetes Pods must not run with privileged: true unless explicitly approved. Pod Security Admission (PSA) must be enforced at the restricted or baseline level.
+
+Container base images must be minimal (distroless or slim variants). General-purpose images (e.g., ubuntu:latest) must not be used in production.
+
+# ── Logging & Monitoring ──────────────────────────────────────────────────────
+
+All production services must emit structured logs (JSON format) to a centralised log aggregation system (e.g., CloudWatch Logs, Splunk, ELK).
+
+Authentication events (login, logout, failed attempts, MFA changes) must be logged and retained for a minimum of 1 year.
+
+API Gateway and load balancer access logs must be enabled. Log retention must be configured for a minimum of 90 days for application logs and 365 days for audit logs.
+
+CloudTrail must be enabled in all AWS regions, including global services logging. CloudTrail logs must be delivered to a dedicated, protected S3 bucket.
+
+Alerting must be configured for: root account usage, IAM policy changes, Security Group changes, failed authentication spikes, and unusual CloudTrail activity.
+
+# ── Infrastructure as Code (IaC) ─────────────────────────────────────────────
+
+Terraform state files must be stored in a remote backend (e.g., S3 + DynamoDB) with state locking enabled. Local state files are prohibited for shared infrastructure.
+
+Terraform resources must be tagged with required tags: Environment, Owner, CostCenter, Project, and ManagedBy. Resources missing mandatory tags must fail CI/CD pipeline checks.
+
+Terraform modules must pin provider versions and module versions. Unpinned versions (e.g., version = ">= 0") are prohibited in production environments.
+
+Security-sensitive Terraform outputs (passwords, keys, tokens) must be marked as sensitive = true to prevent exposure in plan/apply logs.
+
+# ── Data Protection & Privacy ─────────────────────────────────────────────────
+
+Personally Identifiable Information (PII) must not be logged. PII fields must be masked or redacted before writing to logs or sending to monitoring systems.
+
+Data at rest containing PII or regulated financial data must be encrypted with AES-256 or equivalent. Database fields containing PII must be encrypted at the application layer for sensitive categories (SSN, payment card data).
+
+Data retention policies must be enforced programmatically. Data must be deleted or anonymised after its retention period expires. Retention periods must not exceed regulatory requirements.

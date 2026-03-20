@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  # ── API Service ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: ai-dev-assistant-rag:latest
+    container_name: ai_dev_assistant_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist the FAISS index across container restarts.
+      # The index is built by running the ingest service below.
+      - faiss_index:/app/data/faiss_index
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Ingest Service (one-shot) ───────────────────────────────────────────────
+  # Runs once at startup to build the FAISS index from policies.txt.
+  # The API service will not start until this completes successfully.
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: ai-dev-assistant-rag:latest
+    container_name: ai_dev_assistant_ingest
+    env_file:
+      - .env
+    environment:
+      FAISS_INDEX_PATH: /app/data/faiss_index
+      POLICIES_FILE_PATH: /app/data/policies.txt
+    volumes:
+      - faiss_index:/app/data/faiss_index
+    command:
+      [
+        "python",
+        "scripts/ingest.py",
+        "--index-dir",
+        "/app/data/faiss_index",
+        "--policies",
+        "/app/data/policies.txt",
+      ]
+    # Do not restart on success — this is intentionally a one-shot initialiser
+    restart: "no"
+
+volumes:
+  faiss_index:
+    driver: local
+
+networks:
+  default:
+    name: ai_dev_assistant_network

@@ -56,51 +56,7 @@ flowchart TD
     end
 ```
 
-### Data Flow
-
-| Step | Component | What happens |
-|------|-----------|-------------|
-| 0 | `scripts/ingest.py` | Runs once: embeds all policies → builds FAISS index |
-| 1 | `POST /analyze` | Client submits code + type |
-| 2 | `RAGEngine.retrieve()` | Embeds the code, queries FAISS, returns top-k policies |
-| 3 | `build_analysis_prompt()` | Wraps policies + code into a role-based prompt |
-| 4 | `LLMClient.analyze()` | Calls GPT-4o with JSON mode, retries on transient errors |
-| 5 | `AnalyzeResponse` | Returns structured violations / risks / suggestions |
-
 ---
-
-## 🏗️ Architecture Decision: Monolith vs. Split Services
-
-> **This is a critical design decision.** Understanding the trade-offs determines whether you are over-engineering or under-engineering for your use case.
-
----
-
-### 🟢 Option 1 — Monolith (This Implementation)
-
-```
-[ FastAPI Server ]
-   ├── API handling        (routing, validation, auth)
-   ├── RAG logic           (embedding + FAISS search)
-   ├── Prompt building     (grounding + formatting)
-   └── LLM call            (OpenAI Chat API)
-```
-
-**👉 One server. One process. One deployment.**
-
-This is what we built. All components live inside the same FastAPI application, communicating via in-process function calls with no network overhead.
-
----
-
-### 🔥 Option 2 — Production Split Services
-
-```
-[ API Server ]  ──→  [ RAG Service ]  ──→  [ Vector DB ]
-      │
-      └──────────→  [ LLM ]
-```
-
-
-Real Use Cases You Can Say 
 
 Code Review Assistant
 
@@ -170,24 +126,13 @@ A standalone system (FAISS on disk, Pinecone SaaS, Weaviate, Qdrant) that stores
 
 ---
 
-### ⚠️ When NOT to Split (Stay Monolith)
-
-> **Interview insight:** Don't over-engineer. Microservices add real operational cost.
-
-Keep it a **single service** when:
-
-- ✅ Small system or low traffic (< 100 req/day)
-- ✅ POC, MVP, or internal tool
-- ✅ Team size is small (1–3 engineers)
-- ✅ You don't need to scale components independently
-- ✅ Simplicity and fast iteration matter more than optimal scaling
 
 Split into **separate services** when:
 
-- ✅ RAG retrieval is a bottleneck and needs independent scaling
-- ✅ Multiple products share the same policy retrieval logic
-- ✅ You need independent deployments (e.g., RAG updates without API redeploy)
-- ✅ SLAs require fault isolation between retrieval and serving layers
+- RAG retrieval is a bottleneck and needs independent scaling
+- Multiple products share the same policy retrieval logic
+- You need independent deployments (e.g., RAG updates without API redeploy)
+- SLAs require fault isolation between retrieval and serving layers
 
 **This project uses the Monolith architecture** — the right choice for an internal developer tool at this scale. The code is structured so that `rag.py`, `llm.py`, and `main.py` can be extracted into separate services with minimal refactoring.
 

@@ -22,6 +22,42 @@ This system solves that problem by:
 
 ---
 
+## 📋 Impact
+
+Code Review Assistant
+
+Input: PR / code
+
+Output: Bugs
+
+Security issues
+
+Performance suggestions
+
+RAG Flow 
+
+User Query:
+"Is this API compliant with Citi standards?"
+
+→ Convert to embedding
+→ Search vector DB
+→ Retrieve policy docs
+→ Send to LLM
+→ Generate answer
+
+
+Reduces manual security review effort
+
+Prevents vulnerabilities before production
+
+Improves developer productivity with instant feedback
+
+Enables consistent enforcement of enterprise-wide policies
+
+👉 Aligns with a shift-left security model
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid
@@ -56,78 +92,10 @@ flowchart TD
     end
 ```
 
----
-
-Code Review Assistant
-
-Input: PR / code
-
-Output: Bugs
-Security issues
-Performance suggestions
-
-RAG Flow (
-User Query:
-"Is this API compliant with Citi standards?"
-
-→ Convert to embedding
-→ Search vector DB
-→ Retrieve policy docs
-→ Send to LLM
-→ Generate answer
-
-**👉 Multiple services, independently deployable and scalable.**
-
-#### 🟦 API Server — Orchestrator ("Brain / Traffic Controller")
-| Responsibility | Detail |
-|---|---|
-| Accept requests | Expose POST /analyze to clients |
-| Validate input | Schema validation, auth, rate limiting |
-| Call RAG service | HTTP/gRPC to RAG microservice |
-| Call LLM | Forward retrieved policies + code to LLM |
-| Return response | Aggregate and return structured JSON |
-
-#### 🟨 RAG Service — Retriever ("Search Engine")
-| Responsibility | Detail |
-|---|---|
-| Embed query | Convert code snippet → embedding vector |
-| Search Vector DB | Top-k similarity search in FAISS / Pinecone |
-| Return policies | Send relevant policy strings back to API server |
-
-#### 🟥 Vector DB — Memory Storage ("Long-term Memory")
-A standalone system (FAISS on disk, Pinecone SaaS, Weaviate, Qdrant) that stores pre-embedded policy vectors and responds to similarity queries.
 
 ---
 
-### 🔁 Full Data Flow (Split Services)
-
-```
-1. Client        →  API Server       (POST /analyze)
-2. API Server    →  RAG Service      (query: code snippet)
-3. RAG Service   →  Vector DB       (embed + top-k search)
-4. Vector DB     →  RAG Service     (top-k policy vectors)
-5. RAG Service   →  API Server      (retrieved policy strings)
-6. API Server    →  LLM             (grounded prompt)
-7. LLM           →  API Server      (structured JSON)
-8. API Server    →  Client          (AnalyzeResponse)
-```
-
----
-
-### 🧠 Why Split? (Benefits of Option 2)
-
-| Benefit | Explanation |
-|---------|-------------|
-| **Scalability** | Embedding + vector search is CPU/memory heavy — scale the RAG service independently without touching the API server |
-| **Reusability** | Multiple services (code linter, doc generator, PR reviewer) can all call the same RAG service |
-| **Cleaner separation** | Each service has one job — easier to test, debug, and deploy |
-| **Independent performance tuning** | Optimise retrieval latency separately from LLM latency |
-| **Fault isolation** | A RAG service crash doesn't take down the entire API |
-
----
-
-
-Split into **separate services** when:
+## Split into **separate services** when:
 
 - RAG retrieval is a bottleneck and needs independent scaling
 - Multiple products share the same policy retrieval logic

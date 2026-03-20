@@ -42,10 +42,18 @@ _settings = get_settings()
 
 logging.basicConfig(
     level=getattr(logging, _settings.log_level),
-    format='{"time": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
+    format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "request_id": "%(request_id)s", "message": "%(message)s"}',
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 
+# Filter to ensure request_id is always present in logs even if not set manually
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, "request_id"):
+            record.request_id = "system"
+        return True
+
+logging.getLogger().addFilter(RequestIdFilter())
 logger = logging.getLogger(__name__)
 
 
@@ -119,12 +127,14 @@ def create_app() -> FastAPI:
         latency_ms = (time.perf_counter() - start) * 1000
 
         logger.info(
-            "request_id=%s method=%s path=%s status=%d latency_ms=%.2f",
-            request_id,
-            request.method,
-            request.url.path,
-            response.status_code,
-            latency_ms,
+            "Request finished.",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "latency_ms": round(latency_ms, 2)
+            }
         )
 
         response.headers["X-Request-ID"] = request_id

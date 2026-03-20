@@ -58,29 +58,55 @@ class RAGEngine:
             len(self._policy_chunks),
         )
 
-    async def retrieve(self, query: str, top_k: Optional[int] = None) -> List[str]:
-        """Retrieve top-k most relevant policy chunks."""
+    async def retrieve(
+        self,
+        query: str,
+        top_k: Optional[int] = None,
+    ) -> List[dict[str, Any]]:
+        """
+        Retrieve relevant policy chunks based on semantic similarity.
+        Filters by similarity_threshold (L2 distance).
+        """
         if not query or not query.strip():
-            raise EmptyQueryError("Query must not be empty.")
+            raise EmptyQueryError("Query text cannot be empty.")
 
         if self._index is None:
-            raise IndexNotFoundError("FAISS index is not loaded.")
+            raise IndexNotFoundError("FAISS index is not available.")
 
         k = top_k if top_k is not None else self._settings.top_k
         k = min(k, self._index.ntotal)
 
-        if k == 0:
+        if k <= 0:
             return []
 
+        # Convert query to embedding
         query_vector = await self._embed_query(query)
+
+        # Search FAISS index
         distances, indices = self._index.search(query_vector, k)
 
-        retrieved: List[str] = []
-        for idx in indices[0]:
-            if 0 <= idx < len(self._policy_chunks):
-                retrieved.append(self._policy_chunks[idx])
+        results: List[dict[str, Any]] = []
+        threshold = self._settings.similarity_threshold
 
-        return retrieved
+        for dist, idx in zip(distances[0], indices[0]):
+            # FAISS IndexFlatL2 returns squared L2 distance.
+            # Lower is more similar.
+            if dist > threshold:
+                logger.debug("Skipping policy chunk with distance %.3f > %.3f", dist, threshold)
+                continue
+
+            if 0 <= idx < len(self._policy_chunks):
+                results.append({
+                    "text": self._policy_chunks[idx],
+                    "score": float(dist),
+                    "metadata": {"index": int(idx)}
+                })
+
+        logger.info(
+            "Retrieved %d policies (threshold=%.2f, limit=%d)",
+            len(results), threshold, k
+        )
+        return results
 
     async def _embed_query(self, text: str) -> npt.NDArray[np.float32]:
         """Embed a single text string."""

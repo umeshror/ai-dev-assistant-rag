@@ -13,8 +13,7 @@ from typing import Any, List, Optional
 
 from app.core.config import Settings
 from app.core.exceptions import IndexNotFoundError
-from app.engines.llm import LLMClient
-from app.engines.rag import RAGEngine
+from app.engines.base import LLMProtocol, RAGProtocol
 from app.models.analysis import AnalysisResult, AnalyzeRequest, AnalyzeResponse
 from app.prompts.analysis import build_analysis_prompt
 
@@ -30,8 +29,8 @@ class AnalyzerService:
     def __init__(
         self,
         settings: Settings,
-        rag_engine: Optional[RAGEngine],
-        llm_client: LLMClient,
+        rag_engine: Optional[RAGProtocol],
+        llm_client: LLMProtocol,
     ):
         self._settings = settings
         self._rag_engine = rag_engine
@@ -43,40 +42,37 @@ class AnalyzerService:
         request_id: str = "unknown",
     ) -> AnalyzeResponse:
         """
-        End-to-end analysis pipeline.
-
-        1. Retrieve relevant policies from FAISS via RAGEngine.
-        2. Format grounded prompt using prompts/analysis.py.
-        3. Call LLM via LLMClient.
-        4. Package and return structured response.
+        End-to-end analysis pipeline with grounded retrieval.
         """
         if self._rag_engine is None:
             raise IndexNotFoundError(
                 "Policy index is not loaded. Contact the administrator."
             )
 
-        logger.info(
-            "request_id=%s Analyzing %s snippet (length=%d chars)",
-            request_id,
-            request.type,
-            len(request.code),
-        )
+        context = {"request_id": request_id, "type": request.type}
+        logger.info("Starting code analysis. context=%s", context)
 
         # Step 1: Retrieve relevant policies (Top-K)
-        retrieved_policies = await self._rag_engine.retrieve(
+        # RAGEngine now returns List[dict[str, Any]] with 'text' and 'score'
+        retrieved_data = await self._rag_engine.retrieve(
             query=request.code,
             top_k=self._settings.top_k,
         )
 
+        # Extract text chunks for the prompt builder
+        retrieved_texts = [item["text"] for item in retrieved_data]
+
+        if not retrieved_texts:
+            logger.warning("No relevant policies found above threshold for request_id=%s", request_id)
+
         logger.info(
-            "request_id=%s Retrieved %d policies for context",
-            request_id,
-            len(retrieved_policies),
+            "Retrieved %d policies for context. request_id=%s",
+            len(retrieved_texts), request_id
         )
 
         # Step 2: Build prompt with grounded context
         messages = build_analysis_prompt(
-            retrieved_policies=retrieved_policies,
+            retrieved_policies=retrieved_texts,
             code_snippet=request.code,
             code_type=request.type,
         )
@@ -84,9 +80,9 @@ class AnalyzerService:
         # Step 3: Call LLM (Grounded execution)
         raw_analysis: dict[str, Any] = await self._llm_client.analyze(messages)
 
-        logger.info("request_id=%s LLM analysis response received.", request_id)
+        logger.info("LLM analysis complete. request_id=%s", request_id)
 
-        # Step 4: Parse and map to response models
+        # Step 4: Map to response models
         analysis_result = AnalysisResult(
             violations=raw_analysis.get("violations", []),
             security_risks=raw_analysis.get("security_risks", []),

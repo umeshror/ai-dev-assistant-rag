@@ -64,6 +64,13 @@ class Settings(BaseSettings):
         description="Path to the raw policies text file",
     )
 
+    similarity_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=2.0,
+        description="FAISS L2 distance threshold (lower is closer/better)",
+    )
+
     # ── LLM Generation ────────────────────────────────────────────────────
     llm_temperature: float = Field(
         default=0.1,

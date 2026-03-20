@@ -1,0 +1,68 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '**.tf'
+      - '**.yaml'
+      - '**.yml'
+      - '**.py'
+
+jobs:
+  analyze:
+    name: AI Policy Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 0 # Necessary for git diff to work
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx
+
+      - name: Run AI Analyzer
+        id: analyzer
+        env:
+          RAG_API_URL: ${{ secrets.RAG_API_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: |
+          python scripts/github_action_analyzer.py >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true
+
+      - name: Post PR Comment
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            const body = fs.readFileSync(summary, 'utf8');
+            
+            if (body && body.includes("🤖 AI Code Review")) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Check for Failures
+        if: steps.analyzer.outcome == 'failure'
+        run: |
+          echo "Policy violations found. Failing workflow."
+          exit 1

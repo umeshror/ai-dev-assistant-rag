@@ -62,19 +62,24 @@ SCENARIOS = [
 async def run_mock_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     settings = get_settings()
     
-    # Mock Engines
-    mock_rag = MagicMock(spec=RAGEngine)
-    mock_rag.retrieve = AsyncMock(return_value=["Mock Policy 1", "Mock Policy 2"])
+    # Mock Engines using Protocols
+    from app.engines.base import RAGProtocol, LLMProtocol
     
-    mock_llm = MagicMock(spec=LLMClient)
+    mock_rag = MagicMock(spec=RAGProtocol)
+    mock_rag.retrieve = AsyncMock(return_value=[
+        {"text": "Mock Policy 1: Always use encryption.", "score": 0.1, "metadata": {}},
+        {"text": "Mock Policy 2: Public S3 is prohibited.", "score": 0.2, "metadata": {}}
+    ])
+    
+    mock_llm = MagicMock(spec=LLMProtocol)
     mock_llm.analyze = AsyncMock(return_value=MOCK_RESPONSES[scenario["id"]])
     
-    # Initialize real Service with mock engines
+    # Initialize real Service with mock engines (Dependency Inversion in action!)
     analyzer = AnalyzerService(settings, mock_rag, mock_llm)
     
     # Run pipeline
     req = AnalyzeRequest(code=scenario["code"], type=scenario["type"])
-    response = await analyzer.analyze_code(req, request_id="demo-mock-refactor")
+    response = await analyzer.analyze_code(req, request_id="demo-mock-hardened")
     return response.model_dump()
 
 async def _main():

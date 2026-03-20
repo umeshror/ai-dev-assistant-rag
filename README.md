@@ -162,6 +162,16 @@ curl http://localhost:8000/health
 
 ---
 
+### Option C: GitHub Actions (CI/CD)
+
+1. Add your `RAG_API_URL` as a GitHub Actions secret.
+2. The system is pre-configured with:
+    - [scripts/github_action_analyzer.py](file:///Users/umeshsaruk/pprojects/ai-dev-assistant-rag/scripts/github_action_analyzer.py)
+    - [.github/workflows/ai-code-review.yml](file:///Users/umeshsaruk/pprojects/ai-dev-assistant-rag/.github/workflows/ai-code-review.yml)
+3. The workflow will automatically analyze Pull Requests and post results as comments.
+
+---
+
 ## 📡 API Reference
 
 ### `POST /analyze`
@@ -344,7 +354,8 @@ Only _transient_ errors (`RateLimitError`, `APIConnectionError`) are retried. `4
 
 ## 🚀 Future Improvements
 
-- **Caching layer**: Add Redis to cache embedding results for repeated code queries (structure is already Redis-ready via the `Settings` model).
+- **GitHub Actions**: Automated PR auditing with markdown feedback.
+- **Caching layer**: Add Redis to cache embedding results for repeated code queries.
 - **FAISS IVF index**: Use `IndexIVFFlat` for approximate search at scale, enabling corpora of millions of policies.
 - **Hot-reload of policies**: Watch `policies.txt` for changes and rebuild the index without restarting the service.
 - **Authentication**: Add an API key or JWT-based auth middleware for multi-tenant deployments.
